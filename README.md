@@ -9,6 +9,8 @@ An interactive demo of what AI planning means, for a lecture, a talk or self-stu
 
 The page is in English and German. It runs as a small Flask app, or without a server from one self-contained HTML file.
 
+**Read [`TUTORIAL.md`](TUTORIAL.md)** for the terms, the four search strategies, every map and block problem, the design choices and a tour of the code.
+
 ## Results at a glance
 
 Each preset map makes one point. The last four columns give the number of cells each search looked at.
@@ -48,7 +50,7 @@ python app.py            # then open http://127.0.0.1:5000/
 | Command | What it does | Time |
 |---|---|---|
 | `python app.py` | serves the page at `http://127.0.0.1:5000/`. `PORT` sets another port. | until stopped |
-| `./run.sh` | checks that Flask is installed, then starts the app. `PYTHON` names the interpreter. | until stopped |
+| `./run.sh` | checks that Flask is installed, then starts the app with `python3` from the path. `PYTHON` names another interpreter. | until stopped |
 | `python tools/build_standalone.py` | writes `standalone/planning_playground.html` again. Run it after a change in `static/`, `templates/index.html` or `planning/presets.py`, since the file is a copy of these. | |
 | `python -m pytest test/ -q` | 85 planner tests and 36 parity tests. It needs `pytest`, which `requirements.txt` does not list. | 2 s for the planner tests |
 
@@ -89,6 +91,8 @@ standalone/          planning_playground.html, generated
 tools/               build_standalone.py
 test/                test_planning.py, test_parity.py
 run.sh               starts the app
+TUTORIAL.md          terms, search strategies, maps and problems, design choices, code tour
+THIRD-PARTY.md       the software and fonts this repository uses, with their licences
 ```
 
 ## Ground rules
@@ -118,4 +122,4 @@ Not done:
 
 ## Licence
 
-The code is under the BSD 3-Clause licence, see [`LICENSE`](LICENSE). Flask is installed with `pip` and keeps its own licence. The two fonts are loaded from Google Fonts by the browser and are not part of this repository.
+The code is under the BSD 3-Clause licence, see [`LICENSE`](LICENSE). Flask, pytest and the two fonts keep their own licences and are not part of this repository. They are listed in [`THIRD-PARTY.md`](THIRD-PARTY.md).
