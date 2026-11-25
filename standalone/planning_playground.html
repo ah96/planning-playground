@@ -1,0 +1,1782 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Planning Playground</title>
+<!-- Built by tools/build_standalone.py — do not edit by hand.
+     Everything runs in this one file; no server, no network. -->
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* AI Planning Playground — one stylesheet, shared by the Flask app and the
+   standalone HTML build.  Colours follow the Ulm palette. */
+
+:root {
+  --ulm-blue:   #004f7c;
+  --ulm-accent: #009789;
+  --ulm-amber:  #c87800;
+  --ulm-gray:   #5a5a5a;
+  --cause-red:  #c82a2a;
+
+  --floor: #f4f5f6;
+  --grass: #d8e8c8;
+  --mud:   #c9a87a;
+  --water: #9dc6e0;
+  --wall:  #44505a;
+
+  --explored:  #cfe3ef;
+  --explored2: #9dc0d6;
+  --frontier:  #f2c14a;
+  --path:      #009789;
+  --user-path: #b06ec8;
+
+  --ink: #1d2328;
+  --line: #d9dee2;
+  --panel: #ffffff;
+  --page: #eef1f3;
+  --radius: 10px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "Nunito", system-ui, sans-serif;
+  color: var(--ink);
+  background: var(--page);
+  font-size: 15px;
+}
+
+.wrap { max-width: 1480px; margin: 0 auto; padding: 14px 18px 26px; }
+
+/* ------------------------------------------------------------------ head */
+.app-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 18px; flex-wrap: wrap; margin-bottom: 12px;
+}
+.app-head h1 { margin: 0; font-size: 26px; font-weight: 800; color: var(--ulm-blue); }
+.sub { margin: 3px 0 0; color: var(--ulm-gray); font-size: 14px; }
+.head-right { display: flex; align-items: center; gap: 14px; }
+
+.tabs { display: flex; gap: 6px; background: #dfe5e9; padding: 4px; border-radius: var(--radius); }
+.tab {
+  border: 0; background: transparent; padding: 8px 16px; border-radius: 7px;
+  font: inherit; font-weight: 700; color: var(--ulm-gray); cursor: pointer;
+}
+.tab.is-active { background: var(--ulm-blue); color: #fff; }
+
+.langs { display: flex; gap: 4px; }
+.lang {
+  border: 1px solid var(--line); background: #fff; color: var(--ulm-gray);
+  border-radius: 6px; padding: 6px 10px; font: inherit; font-weight: 700; cursor: pointer;
+}
+.lang.is-active { background: var(--ulm-accent); border-color: var(--ulm-accent); color: #fff; }
+
+/* ----------------------------------------------------------------- panel */
+.panel { background: var(--panel); border-radius: var(--radius); padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.panel.is-hidden { display: none; }
+
+.toolbar {
+  display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-end;
+  padding-bottom: 12px; border-bottom: 1px solid var(--line); margin-bottom: 14px;
+}
+.field { display: flex; flex-direction: column; gap: 5px; font-size: 13px; font-weight: 700; color: var(--ulm-gray); border: 0; padding: 0; margin: 0; }
+.field legend { padding: 0; font-size: 13px; font-weight: 700; color: var(--ulm-gray); margin-bottom: 5px; }
+.field.check { flex-direction: row; align-items: center; gap: 7px; }
+.field select {
+  font: inherit; padding: 7px 10px; border: 1px solid var(--line);
+  border-radius: 7px; background: #fff; min-width: 210px;
+}
+.field input[type=range] { width: 150px; }
+
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip {
+  border: 1px solid var(--line); background: #fff; border-radius: 999px;
+  padding: 6px 12px; font: inherit; font-size: 13px; font-weight: 700;
+  color: var(--ulm-gray); cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+}
+.chip .dot { width: 9px; height: 9px; border-radius: 50%; background: currentColor; }
+.chip.is-on { background: var(--ulm-blue); border-color: var(--ulm-blue); color: #fff; }
+.chip.is-on.tool-chip { background: var(--ulm-accent); border-color: var(--ulm-accent); }
+
+/* ----------------------------------------------------------------- stage */
+.stage { display: grid; grid-template-columns: minmax(0,1fr) 340px; gap: 18px; align-items: start; }
+.board-col { min-width: 0; }
+.side { display: flex; flex-direction: column; gap: 6px; }
+.side h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--ulm-gray); margin: 12px 0 4px; }
+.side h2:first-child { margin-top: 0; }
+
+/* ------------------------------------------------------------------ grid */
+.grid {
+  display: grid; gap: 1px; background: var(--line);
+  border: 2px solid var(--wall); border-radius: 6px; overflow: hidden;
+  user-select: none; touch-action: none; width: 100%;
+}
+.cell { position: relative; background: var(--floor); aspect-ratio: 1 / 1; }
+.cell[data-t=","] { background: var(--grass); }
+.cell[data-t="~"] { background: var(--mud); }
+.cell[data-t="="] { background: var(--water); }
+.cell[data-t="#"] { background: var(--wall); }
+
+.cell.explored::after {
+  content: ""; position: absolute; inset: 0;
+  background: var(--explored); opacity: var(--depth, .55);
+}
+.cell.frontier::after { background: var(--frontier); opacity: .85; }
+.cell.path::after { content: ""; position: absolute; inset: 18%; border-radius: 50%; background: var(--path); }
+.cell.userpath::after { content: ""; position: absolute; inset: 24%; border-radius: 50%; background: var(--user-path); }
+
+.cell.start, .cell.goal { z-index: 2; }
+.cell.start::before, .cell.goal::before {
+  content: ""; position: absolute; inset: 10%; z-index: 3; border-radius: 4px;
+}
+.cell.start::before { background: var(--ulm-blue); box-shadow: inset 0 0 0 2px #fff; }
+.cell.goal::before {
+  background: var(--cause-red);
+  clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+}
+.cell.blocked-now { outline: 2px solid var(--cause-red); outline-offset: -2px; z-index: 4; }
+
+/* -------------------------------------------------------------- playback */
+.playbar { display: flex; gap: 8px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
+.playbar .spacer { flex: 1; }
+.playbar button {
+  font: inherit; font-weight: 700; font-size: 13px; padding: 8px 14px;
+  border-radius: 7px; border: 1px solid var(--line); background: #fff;
+  color: var(--ulm-gray); cursor: pointer;
+}
+.playbar button:hover:not(:disabled) { border-color: var(--ulm-accent); color: var(--ulm-accent); }
+.playbar button:disabled { opacity: .45; cursor: default; }
+.playbar button.primary { background: var(--ulm-blue); border-color: var(--ulm-blue); color: #fff; }
+.playbar button.primary:hover { background: #063f62; color: #fff; }
+.playbar button.is-on { background: var(--user-path); border-color: var(--user-path); color: #fff; }
+
+.progress { font-family: "JetBrains Mono", monospace; font-size: 12px; color: var(--ulm-gray); }
+.message { min-height: 20px; margin: 8px 0 0; font-size: 14px; font-weight: 600; color: var(--ulm-blue); }
+.message.warn { color: var(--cause-red); }
+
+/* ----------------------------------------------------------------- stats */
+.stats { width: 100%; border-collapse: collapse; font-size: 13px; }
+.stats { table-layout: fixed; }
+.stats th, .stats td { padding: 6px 5px; border-bottom: 1px solid var(--line); text-align: left; }
+.stats th:first-child, .stats td:first-child { width: 42%; }
+.stats th.num { width: 14.5%; }
+.stats th { font-size: 11px; text-transform: uppercase; color: var(--ulm-gray); letter-spacing: .03em; }
+.stats .num, .stats td.num { text-align: right; font-family: "JetBrains Mono", monospace; }
+.stats tr.is-shown td { background: #eef7f6; }
+.stats .algo-name { display: flex; align-items: center; gap: 7px; font-weight: 700; }
+.stats .algo-name .dot { width: 10px; height: 10px; border-radius: 50%; }
+.stats .best { color: var(--ulm-accent); font-weight: 800; }
+.stats .worst { color: var(--cause-red); }
+.stats .hint { display: block; font-weight: 400; font-size: 11px; color: var(--ulm-gray); }
+
+.lesson { font-size: 13px; line-height: 1.5; color: var(--ink); background: #f7f9fa; border-left: 3px solid var(--ulm-accent); padding: 9px 11px; border-radius: 0 6px 6px 0; margin: 0; }
+
+.legend { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px; color: var(--ulm-gray); }
+.legend li { display: flex; align-items: center; gap: 5px; }
+.sw { width: 13px; height: 13px; border-radius: 3px; display: inline-block; }
+.sw-explored { background: var(--explored2); }
+.sw-frontier { background: var(--frontier); }
+.sw-path { background: var(--path); border-radius: 50%; }
+.sw-user { background: var(--user-path); border-radius: 50%; }
+
+/* ---------------------------------------------------------------- blocks */
+.blocks-scenes { display: grid; grid-template-columns: minmax(0,1.6fr) minmax(0,1fr); gap: 16px; }
+.scene h3 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--ulm-gray); }
+
+.table-top {
+  display: flex; align-items: flex-end; justify-content: center; gap: 22px;
+  min-height: 250px; padding: 12px 12px 0; background: #f7f9fa;
+  border-radius: 8px; border-bottom: 7px solid var(--wall);
+}
+.stack { display: flex; flex-direction: column-reverse; gap: 4px; }
+.block {
+  width: 54px; height: 44px; border-radius: 7px; display: grid; place-items: center;
+  font-weight: 800; font-size: 19px; color: #fff;
+  box-shadow: inset 0 -3px 0 rgba(0,0,0,.18);
+  transition: transform .18s ease;
+}
+.block.held { transform: translateY(-16px); box-shadow: 0 5px 12px rgba(0,0,0,.3); outline: 3px solid var(--ulm-amber); }
+.block.moved { outline: 3px solid var(--ulm-accent); }
+.gripper { margin: 8px 0 0; font-size: 13px; font-weight: 700; color: var(--ulm-amber); text-align: center; min-height: 18px; }
+
+.goal-facts { display: flex; flex-direction: column; gap: 5px; }
+.fact {
+  font-family: "JetBrains Mono", monospace; font-size: 12.5px; padding: 6px 9px;
+  border-radius: 6px; background: #f2f4f5; border-left: 3px solid var(--line);
+}
+.fact.sat { background: #e7f4f2; border-left-color: var(--ulm-accent); color: #04635a; }
+.fact.unsat { background: #fdf0ee; border-left-color: var(--cause-red); color: #8f2020; }
+
+.plan { margin: 0; padding-left: 20px; font-family: "JetBrains Mono", monospace; font-size: 12.5px; display: flex; flex-direction: column; gap: 3px; max-height: 190px; overflow-y: auto; }
+.plan li { padding: 3px 5px; border-radius: 5px; cursor: pointer; }
+.plan li.is-current { background: var(--ulm-blue); color: #fff; font-weight: 600; }
+.plan li.is-done { color: var(--ulm-gray); }
+
+.action-detail { font-size: 12.5px; display: flex; flex-direction: column; gap: 7px; }
+.action-detail .act-name { font-family: "JetBrains Mono", monospace; font-weight: 600; font-size: 14px; color: var(--ulm-blue); }
+.action-detail .grp-label { font-size: 11px; text-transform: uppercase; letter-spacing: .03em; color: var(--ulm-gray); margin-bottom: 3px; }
+.action-detail .facts { display: flex; flex-direction: column; gap: 3px; }
+.tick { color: var(--ulm-accent); font-weight: 800; }
+.cross { color: var(--cause-red); font-weight: 800; }
+.fact.add { background: #e7f4f2; border-left-color: var(--ulm-accent); }
+.fact.del { background: #f3f4f5; border-left-color: var(--ulm-gray); text-decoration: line-through; color: var(--ulm-gray); }
+
+.predicates { display: flex; flex-wrap: wrap; gap: 4px; }
+.predicates .fact { font-size: 11.5px; padding: 4px 7px; }
+
+.compare { display: flex; flex-direction: column; gap: 5px; font-size: 12px; }
+.compare .row { display: grid; grid-template-columns: 92px 1fr 48px; gap: 7px; align-items: center; }
+.compare .bar { height: 11px; border-radius: 6px; background: var(--ulm-blue); min-width: 2px; }
+.compare .n { font-family: "JetBrains Mono", monospace; text-align: right; }
+
+.app-foot { margin-top: 14px; font-size: 12px; color: var(--ulm-gray); text-align: center; }
+
+@media (max-width: 1080px) {
+  .stage { grid-template-columns: 1fr; }
+  .blocks-scenes { grid-template-columns: 1fr; }
+}
+
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="app-head">
+    <div>
+      <h1 data-i18n="appTitle">AI Planning Playground</h1>
+      <p class="sub" data-i18n="appSubtitle"></p>
+    </div>
+    <div class="head-right">
+      <nav class="tabs" role="tablist">
+        <button class="tab is-active" data-tab="grid" role="tab" data-i18n="tabGrid"></button>
+        <button class="tab" data-tab="blocks" role="tab" data-i18n="tabBlocks"></button>
+      </nav>
+      <div class="langs">
+        <button class="lang is-active" data-lang="en">EN</button>
+        <button class="lang" data-lang="de">DE</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ============================ NAVIGATION ============================ -->
+  <section class="panel" id="tab-grid">
+
+    <div class="toolbar">
+      <label class="field">
+        <span data-i18n="mapLabel"></span>
+        <select id="mapSelect"></select>
+      </label>
+
+      <fieldset class="field algos">
+        <legend data-i18n="algorithmsLabel"></legend>
+        <div id="algoBoxes" class="chips"></div>
+      </fieldset>
+
+      <fieldset class="field tools">
+        <legend data-i18n="toolsLabel"></legend>
+        <div id="toolBoxes" class="chips"></div>
+      </fieldset>
+
+      <label class="field check">
+        <input type="checkbox" id="diagonalToggle">
+        <span data-i18n="diagonalLabel"></span>
+      </label>
+
+      <label class="field">
+        <span data-i18n="speedLabel"></span>
+        <input type="range" id="speedRange" min="1" max="100" value="55">
+      </label>
+    </div>
+
+    <div class="stage">
+      <div class="board-col">
+        <div id="grid" class="grid" role="img" aria-label="planning map"></div>
+        <div class="playbar">
+          <button id="btnPlan" class="primary" data-i18n="btnPlan"></button>
+          <button id="btnRace" data-i18n="btnRace"></button>
+          <span class="spacer"></span>
+          <button id="btnPlay" data-i18n="btnPlay"></button>
+          <button id="btnStep" data-i18n="btnStep"></button>
+          <button id="btnSkip" data-i18n="btnSkip"></button>
+          <button id="btnReset" data-i18n="btnReset"></button>
+        </div>
+        <div class="playbar">
+          <button id="btnDraw" data-i18n="btnDrawPath"></button>
+          <button id="btnObstacle" data-i18n="btnObstacle"></button>
+          <span class="spacer"></span>
+          <span id="gridProgress" class="progress"></span>
+        </div>
+        <p id="gridMessage" class="message" role="status"></p>
+      </div>
+
+      <aside class="side">
+        <h2 data-i18n="statsTitle"></h2>
+        <table class="stats" id="gridStats">
+          <thead><tr>
+            <th data-i18n="colAlgorithm"></th>
+            <th class="num" data-i18n="colExpanded"></th>
+            <th class="num" data-i18n="colCost"></th>
+            <th class="num" data-i18n="colSteps"></th>
+            <th class="num" data-i18n="colTime"></th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+
+        <h2 data-i18n="lessonTitle"></h2>
+        <p id="mapLesson" class="lesson"></p>
+
+        <h2 data-i18n="legendTitle"></h2>
+        <ul class="legend">
+          <li><i class="sw sw-explored"></i><span data-i18n="legendExplored"></span></li>
+          <li><i class="sw sw-frontier"></i><span data-i18n="legendFrontier"></span></li>
+          <li><i class="sw sw-path"></i><span data-i18n="legendPath"></span></li>
+          <li><i class="sw sw-user"></i><span data-i18n="legendYourPath"></span></li>
+        </ul>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ============================== BLOCKS ============================== -->
+  <section class="panel is-hidden" id="tab-blocks">
+
+    <div class="toolbar">
+      <label class="field">
+        <span data-i18n="problemLabel"></span>
+        <select id="blockSelect"></select>
+      </label>
+      <fieldset class="field algos">
+        <legend data-i18n="algorithmsLabel"></legend>
+        <div id="blockAlgoBoxes" class="chips"></div>
+      </fieldset>
+      <label class="field">
+        <span data-i18n="speedLabel"></span>
+        <input type="range" id="blockSpeed" min="1" max="100" value="45">
+      </label>
+    </div>
+
+    <div class="stage">
+      <div class="board-col">
+        <div class="blocks-scenes">
+          <div class="scene">
+            <h3 data-i18n="stateNow"></h3>
+            <div id="blocksNow" class="table-top"></div>
+            <p id="gripper" class="gripper"></p>
+          </div>
+          <div class="scene goal-scene">
+            <h3 data-i18n="stateGoal"></h3>
+            <div id="blocksGoal" class="goal-facts"></div>
+          </div>
+        </div>
+
+        <div class="playbar">
+          <button id="btnBlockPlan" class="primary" data-i18n="btnPlan"></button>
+          <span class="spacer"></span>
+          <button id="btnBlockPlay" data-i18n="btnPlay"></button>
+          <button id="btnBlockStep" data-i18n="btnStep"></button>
+          <button id="btnBlockSkip" data-i18n="btnSkip"></button>
+          <button id="btnBlockReset" data-i18n="btnReset"></button>
+        </div>
+        <p id="blocksMessage" class="message" role="status"></p>
+      </div>
+
+      <aside class="side">
+        <h2 data-i18n="planLabel"></h2>
+        <ol id="planList" class="plan"></ol>
+
+        <h2 data-i18n="actionLabel"></h2>
+        <div id="actionDetail" class="action-detail"></div>
+
+        <h2 data-i18n="predicatesLabel"></h2>
+        <div id="predicateList" class="predicates"></div>
+
+        <h2 data-i18n="lessonTitle"></h2>
+        <p id="blockLesson" class="lesson"></p>
+
+        <h2 data-i18n="blocksCompare"></h2>
+        <div id="blocksCompare" class="compare"></div>
+      </aside>
+    </div>
+  </section>
+
+  <footer class="app-foot"><span data-i18n="footerNote"></span></footer>
+</div>
+<script>
+window.PP_MODE = "standalone";
+window.PP_LANGS = {"en": {"appTitle": "AI Planning Playground", "appSubtitle": "Two domains, one idea: a plan is a path through a space of states.", "tabGrid": "Robot navigation", "tabBlocks": "Blocks world", "mapLabel": "Map", "algorithmsLabel": "Algorithms", "toolsLabel": "Paint", "toolStart": "Start", "toolGoal": "Goal", "toolWall": "Wall", "toolFloor": "Floor (1)", "toolGrass": "Grass (2)", "toolMud": "Mud (4)", "toolWater": "Water (8)", "diagonalLabel": "Allow diagonal moves", "speedLabel": "Speed", "btnPlan": "Plan", "btnRace": "Race all four", "btnPlay": "Play", "btnPause": "Pause", "btnStep": "Step", "btnSkip": "Skip to end", "btnReset": "Clear search", "btnDrawPath": "Draw your own path", "btnDrawPathDone": "Score my path", "btnObstacle": "Drop an obstacle & replan", "statsTitle": "What each search had to do", "colAlgorithm": "Algorithm", "colExpanded": "Cells seen", "colCost": "Cost", "colSteps": "Steps", "colTime": "Time", "bfs": "Breadth-first", "dijkstra": "Dijkstra", "greedy": "Greedy", "astar": "A*", "bfsHint": "Fewest steps. Ignores what a cell costs.", "dijkstraHint": "Cheapest path. Ignores where the goal is.", "greedyHint": "Runs at the goal. No guarantee at all.", "astarHint": "Cheapest path, guided by the estimate.", "legendTitle": "Legend", "legendExplored": "looked at", "legendFrontier": "next in line", "legendPath": "the plan", "legendYourPath": "your path", "lessonTitle": "What this example shows", "playingLabel": "Showing", "expandedSoFar": "cells looked at", "noPath": "There is no path at all — the goal is walled off.", "pathBlocked": "An obstacle landed on the path. Replanning…", "scoreValid": "Your path costs {cost}; the optimum is {optimal}.", "scorePerfect": "Your path costs {cost} — that is the optimum. Well done.", "scoreInvalidEndpoints": "A path has to start at the robot and end at the goal.", "scoreInvalidWall": "That path goes through a wall.", "scoreInvalidJump": "That path jumps — every step must go to a neighbouring cell.", "scoreInvalidEmpty": "Draw a path first, by dragging from the robot to the goal.", "drawHint": "Drag from the robot to the goal to draw your own path, then score it.", "problemLabel": "Problem", "goalLabel": "Goal", "stateNow": "State now", "stateGoal": "Goal", "predicatesLabel": "What is true right now", "planLabel": "The plan", "actionLabel": "This action", "preLabel": "Preconditions — all of these had to be true", "addLabel": "Adds", "delLabel": "Deletes", "blocksCompare": "States looked at, per strategy", "blocksTable": "table", "gripperEmpty": "gripper empty", "gripperHolding": "holding {block}", "stepOf": "Step {i} of {n}", "beforePlan": "Press Plan to see how the planner gets there.", "planFound": "Found a {n}-action plan after looking at {expanded} states.", "footerNote": "Every number on this page was computed live by the planner — nothing is pre-recorded."}, "de": {"appTitle": "KI-Planungs-Labor", "appSubtitle": "Zwei Domänen, eine Idee: Ein Plan ist ein Weg durch einen Raum von Zuständen.", "tabGrid": "Roboternavigation", "tabBlocks": "Klötzchenwelt", "mapLabel": "Karte", "algorithmsLabel": "Verfahren", "toolsLabel": "Malen", "toolStart": "Start", "toolGoal": "Ziel", "toolWall": "Wand", "toolFloor": "Boden (1)", "toolGrass": "Gras (2)", "toolMud": "Schlamm (4)", "toolWater": "Wasser (8)", "diagonalLabel": "Diagonalzüge erlauben", "speedLabel": "Tempo", "btnPlan": "Planen", "btnRace": "Alle vier im Rennen", "btnPlay": "Abspielen", "btnPause": "Pause", "btnStep": "Schritt", "btnSkip": "Ans Ende", "btnReset": "Suche löschen", "btnDrawPath": "Eigenen Weg zeichnen", "btnDrawPathDone": "Meinen Weg bewerten", "btnObstacle": "Hindernis fallen lassen & neu planen", "statsTitle": "Was jede Suche leisten musste", "colAlgorithm": "Verfahren", "colExpanded": "Felder", "colCost": "Kosten", "colSteps": "Schritte", "colTime": "Zeit", "bfs": "Breitensuche", "dijkstra": "Dijkstra", "greedy": "Gierig", "astar": "A*", "bfsHint": "Wenigste Schritte. Ignoriert, was ein Feld kostet.", "dijkstraHint": "Billigster Weg. Ignoriert, wo das Ziel liegt.", "greedyHint": "Rennt aufs Ziel zu. Ohne jede Garantie.", "astarHint": "Billigster Weg, geführt von der Schätzung.", "legendTitle": "Legende", "legendExplored": "angesehen", "legendFrontier": "als Nächstes dran", "legendPath": "der Plan", "legendYourPath": "Ihr Weg", "lessonTitle": "Was dieses Beispiel zeigt", "playingLabel": "Gezeigt wird", "expandedSoFar": "Felder angesehen", "noPath": "Es gibt überhaupt keinen Weg — das Ziel ist zugemauert.", "pathBlocked": "Ein Hindernis ist auf den Weg gefallen. Neuplanung …", "scoreValid": "Ihr Weg kostet {cost}; das Optimum liegt bei {optimal}.", "scorePerfect": "Ihr Weg kostet {cost} — das ist das Optimum. Sehr gut.", "scoreInvalidEndpoints": "Ein Weg muss beim Roboter anfangen und am Ziel enden.", "scoreInvalidWall": "Dieser Weg führt durch eine Wand.", "scoreInvalidJump": "Dieser Weg springt — jeder Schritt muss auf ein Nachbarfeld gehen.", "scoreInvalidEmpty": "Zeichnen Sie zuerst einen Weg, indem Sie vom Roboter zum Ziel ziehen.", "drawHint": "Ziehen Sie vom Roboter zum Ziel, um einen eigenen Weg zu zeichnen, und lassen Sie ihn dann bewerten.", "problemLabel": "Aufgabe", "goalLabel": "Ziel", "stateNow": "Zustand jetzt", "stateGoal": "Ziel", "predicatesLabel": "Was gerade wahr ist", "planLabel": "Der Plan", "actionLabel": "Diese Aktion", "preLabel": "Vorbedingungen — all das musste wahr sein", "addLabel": "Fügt hinzu", "delLabel": "Löscht", "blocksCompare": "Angesehene Zustände je Verfahren", "blocksTable": "Tisch", "gripperEmpty": "Greifer leer", "gripperHolding": "hält {block}", "stepOf": "Schritt {i} von {n}", "beforePlan": "Auf Planen drücken, um zu sehen, wie der Planer dorthin kommt.", "planFound": "Plan mit {n} Aktionen gefunden, nach {expanded} angesehenen Zuständen.", "footerNote": "Jede Zahl auf dieser Seite hat der Planer live berechnet — nichts ist aufgezeichnet."}};
+window.PP_PRESETS = {"grids": [{"id": "detour", "name": {"en": "The wall with one gap", "de": "Die Wand mit einer Lücke"}, "lesson": {"en": "All four find the same 23-step path. Breadth-first and Dijkstra look at 299 cells to do it; greedy and A* look at 24. Same answer, twelve times the work.", "de": "Alle vier finden denselben 23-Schritte-Weg. Breitensuche und Dijkstra sehen sich dafür 299 Felder an, gierige Suche und A* nur 24. Gleiche Antwort, zwölffacher Aufwand."}, "rows": ["..........................", "..........................", "..............#...........", "..............#...........", "..............#...........", "..............#...........", "..............#...........", "..........................", "..............#...........", "..............#...........", "..............#...........", "..............#...........", "..............#...........", ".........................."], "start": [7, 2], "goal": [7, 25], "diagonal": false}, {"id": "mud", "name": {"en": "Mud and water", "de": "Schlamm und Wasser"}, "lesson": {"en": "Now cells cost different amounts. Breadth-first and greedy still count steps and wade straight through the water: 23 steps, cost 126. Dijkstra and A* walk around for cost 35 — the same map, a path three times cheaper.", "de": "Jetzt kosten die Felder unterschiedlich viel. Breitensuche und gierige Suche zählen weiter Schritte und waten mitten durchs Wasser: 23 Schritte, Kosten 126. Dijkstra und A* gehen aussen herum für Kosten 35 — dieselbe Karte, ein dreimal billigerer Weg."}, "rows": ["..........................", "..........,,,,,,,,,,......", ".........,,~~~~~~~~,,.....", "........,,~~========~,,...", ".......,,~~==========~,,..", "......,,~~============~,,.", "......,~~=============~,,.", "......,~~=============~,,.", "......,,~~============~,,.", ".......,,~~==========~,,..", "........,,~~========~,,...", ".........,,~~~~~~~~,,.....", "..........,,,,,,,,,,......", ".........................."], "start": [7, 2], "goal": [7, 25], "diagonal": false}, {"id": "office", "name": {"en": "Office corridor", "de": "Bürokorridor"}, "lesson": {"en": "An office floor, with diagonal moves allowed. Greedy arrives with cost 29.73 where the optimum is 27.49 — cheap to compute, and wrong. Drop an obstacle into the finished path and replan: that is the moment the robot has to explain itself.", "de": "Ein Büroflur, mit erlaubten Diagonalzügen. Die gierige Suche kommt mit Kosten 29,73 an, wo das Optimum 27,49 ist — billig gerechnet und trotzdem falsch. Legen Sie ein Hindernis in den fertigen Weg und planen Sie neu: genau dann muss der Roboter sich erklären."}, "rows": ["..........................", "....########....########..", "....#......#....#.........", "....#......#....#......,,.", "....#......######......,,.", "....#.....................", "....########.#############", ".............#............", "#########....#............", "........#....#...####.....", "........#........#...#....", ".................#...#....", "########.....#####...#....", ".........................."], "start": [11, 2], "goal": [2, 24], "diagonal": true}, {"id": "pocket", "name": {"en": "The pocket", "de": "Die Tasche"}, "lesson": {"en": "The goal sits in a box whose only door is round the back. The heuristic points straight at the wall, so greedy walks into the pocket and has to crawl out again: 67 cells instead of the 24 it needed on the first map. A helpful estimate and a misleading one look identical from the inside.", "de": "Das Ziel steckt in einer Kiste, deren einzige Tür hinten liegt. Die Heuristik zeigt direkt auf die Wand, also läuft die gierige Suche in die Tasche und muss wieder heraus: 67 Felder statt der 24 auf der ersten Karte. Eine hilfreiche und eine irreführende Schätzung sehen von innen gleich aus."}, "rows": ["..........................", "..........................", "..........................", "..........................", "................#########.", "................#.......#.", "................#.......#.", "................#.......#.", "................#.......#.", "................#.......#.", "................####.#####", "..........................", "..........................", ".........................."], "start": [7, 2], "goal": [7, 20], "diagonal": false}, {"id": "maze", "name": {"en": "Maze", "de": "Labyrinth"}, "lesson": {"en": "Corridors, so there is barely a choice to make: A* looks at 91 cells where Dijkstra looks at 109. The heuristic has almost nothing left to save. A heuristic helps exactly as much as the map lets it.", "de": "Lauter Korridore, also kaum Wahlmöglichkeiten: A* sieht sich 91 Felder an, Dijkstra 109. Der Heuristik bleibt fast nichts zu sparen. Eine Heuristik hilft genau so viel, wie die Karte es zulässt."}, "rows": ["##########################", "#........#...............#", "#.######.#.#############.#", "#.#....#.#.#...........#.#", "#.#.##.#.#.#.#########.#.#", "#.#.##.#...#.#.......#.#.#", "#.#.##.#####.#.#####.#.#.#", "#...##.......#.#...#.#.#.#", "#.########.###.#.#.#.#.#.#", "#........#.#...#.#.#...#.#", "#.######.#.#.###.#.#####.#", "#.#......#.#.....#.......#", "#.#.######.#############.#", "##########################"], "start": [1, 1], "goal": [12, 24], "diagonal": false}], "blocks": [{"id": "swap", "name": {"en": "Turn a tower upside down", "de": "Einen Turm umdrehen"}, "lesson": {"en": "Three blocks, and already six moves: you have to take the tower apart before you can build it the other way round.", "de": "Drei Klötze und schon sechs Züge: Der Turm muss erst auseinander, bevor er andersherum wieder aufgebaut werden kann."}, "start": {"stacks": [["C", "B", "A"]], "holding": null}, "goal": ["on(C, B)", "on(B, A)"]}, {"id": "sussman", "name": {"en": "The Sussman anomaly", "de": "Die Sussman-Anomalie"}, "lesson": {"en": "The famous one. Solve on(A,B) first and you must undo it to reach on(B,C); solve on(B,C) first and you must undo that. Taking the goals one at a time cannot work — the planner has to consider them together.", "de": "Der Klassiker. Erfüllt man erst on(A,B), muss man es wieder zerstören, um on(B,C) zu erreichen — und umgekehrt. Ziel für Ziel geht hier nicht, der Planer muss sie zusammen betrachten."}, "start": {"stacks": [["A", "C"], ["B"]], "holding": null}, "goal": ["on(A, B)", "on(B, C)"]}, {"id": "unbury", "name": {"en": "Dig out the bottom block", "de": "Den untersten Klotz ausgraben"}, "lesson": {"en": "The goal names one block, but four have to move. This is why a plan is longer than a goal.", "de": "Das Ziel nennt einen Klotz, bewegen müssen sich vier. Deshalb ist ein Plan länger als ein Ziel."}, "start": {"stacks": [["E", "D", "C", "B", "A"]], "holding": null}, "goal": ["ontable(E)", "on(A, E)"]}, {"id": "twotowers", "name": {"en": "Two towers into one", "de": "Zwei Türme zu einem"}, "lesson": {"en": "Five blocks is roughly five hundred reachable states. Compare how many breadth-first search looks at against A* with the 'unsatisfied goals' estimate.", "de": "Fünf Klötze sind rund fünfhundert erreichbare Zustände. Vergleichen Sie, wie viele davon die Breitensuche ansieht und wie viele A* mit der Schätzung 'offene Ziele'."}, "start": {"stacks": [["A", "B"], ["C", "D"], ["E"]], "holding": null}, "goal": ["on(A, B)", "on(B, C)", "on(C, D)", "on(D, E)"]}], "strategies": ["bfs", "dijkstra", "greedy", "astar"]};
+</script>
+<script>
+/* ---- static/js/i18n.js ---- */
+/* Tiny translation layer: swap the catalogue, re-stamp every [data-i18n] node.
+   The catalogues live in static/lang/*.json for the server build; the
+   standalone build inlines them into window.PP_LANGS before this runs. */
+window.I18N = (function () {
+  let lang = "en";
+  let packs = window.PP_LANGS || {};
+
+  async function load() {
+    if (packs.en && packs.de) return packs;            // already inlined
+    const [en, de] = await Promise.all([
+      fetch("static/lang/en.json").then((r) => r.json()),
+      fetch("static/lang/de.json").then((r) => r.json()),
+    ]);
+    packs = { en, de };
+    return packs;
+  }
+
+  /** Look a key up, with {placeholder} substitution. */
+  function t(key, vars) {
+    const pack = packs[lang] || {};
+    let s = pack[key] != null ? pack[key] : (packs.en && packs.en[key]) || key;
+    if (vars) {
+      for (const k of Object.keys(vars)) s = s.split("{" + k + "}").join(vars[k]);
+    }
+    return s;
+  }
+
+  /** Pick the right half of a {en, de} object coming from the presets. */
+  function pick(obj) {
+    if (!obj) return "";
+    return obj[lang] != null ? obj[lang] : obj.en;
+  }
+
+  function apply(root) {
+    (root || document).querySelectorAll("[data-i18n]").forEach((el) => {
+      el.textContent = t(el.dataset.i18n);
+    });
+  }
+
+  function set(next) {
+    lang = next;
+    apply();
+    document.documentElement.lang = next;
+    window.dispatchEvent(new CustomEvent("pp:lang", { detail: next }));
+  }
+
+  return { load, t, pick, apply, set, get lang() { return lang; } };
+})();
+
+/* ---- static/js/planner/core.js ---- */
+/* A JavaScript port of planning/search.py, gridworld.py and blocksworld.py.
+ *
+ * This exists so the standalone HTML build needs no server.  It is kept
+ * deliberately parallel to the Python -- same function names, same order of
+ * successors, same tie-breaking -- because test/test_parity.py runs both on
+ * every preset and fails if a single number differs.  If you change one side,
+ * change the other.
+ */
+window.Planner = (function () {
+  "use strict";
+
+  const STRATEGIES = ["bfs", "dijkstra", "greedy", "astar"];
+
+  // ------------------------------------------------------------------ heap
+  // Binary min-heap over [priority, counter, ...]. The minimum is unique
+  // because `counter` is unique, so this pops exactly what Python's heapq does.
+  class Heap {
+    constructor() { this.a = []; }
+    get size() { return this.a.length; }
+    static less(x, y) { return x[0] !== y[0] ? x[0] < y[0] : x[1] < y[1]; }
+    push(item) {
+      const a = this.a;
+      a.push(item);
+      let i = a.length - 1;
+      while (i > 0) {
+        const p = (i - 1) >> 1;
+        if (Heap.less(a[i], a[p])) { const t = a[i]; a[i] = a[p]; a[p] = t; i = p; } else break;
+      }
+    }
+    pop() {
+      const a = this.a;
+      const top = a[0];
+      const last = a.pop();
+      if (a.length) {
+        a[0] = last;
+        let i = 0;
+        for (;;) {
+          const l = 2 * i + 1, r = l + 1;
+          let m = i;
+          if (l < a.length && Heap.less(a[l], a[m])) m = l;
+          if (r < a.length && Heap.less(a[r], a[m])) m = r;
+          if (m === i) break;
+          const t = a[i]; a[i] = a[m]; a[m] = t; i = m;
+        }
+      }
+      return top;
+    }
+  }
+
+  function priority(strategy, g, h) {
+    if (strategy === "dijkstra") return g;
+    if (strategy === "greedy") return h;
+    return g + h;
+  }
+
+  // ---------------------------------------------------------------- search
+  function search(problem, strategy, maxExpansions) {
+    if (!STRATEGIES.includes(strategy)) throw new Error("unknown strategy " + strategy);
+    maxExpansions = maxExpansions || 200000;
+    const t0 = (performance && performance.now) ? performance.now() : Date.now();
+
+    const start = problem.initial();
+    const startKey = problem.key(start);
+    const res = {
+      strategy, found: false, plan: [], states: [], cost: 0,
+      expanded: [], g: [], frontier: [], generated: 0, maxFrontier: 0, ms: 0,
+    };
+
+    const parent = new Map([[startKey, [null, null, start]]]);
+    const bestG = new Map([[startKey, 0]]);
+    const closed = new Set();
+    let counter = 0;
+
+    const fifo = [];
+    let fifoHead = 0;                       // index instead of shift(), for O(1)
+    const heap = new Heap();
+    if (strategy === "bfs") fifo.push([startKey, start, 0]);
+    else heap.push([priority(strategy, 0, strategy === "dijkstra" ? 0 : problem.heuristic(start)), counter, startKey, start, 0]);
+
+    while ((strategy === "bfs" ? fifoHead < fifo.length : heap.size > 0)) {
+      if (res.expanded.length >= maxExpansions) break;
+
+      let nodeKey, state, g;
+      if (strategy === "bfs") {
+        const n = fifo[fifoHead++];
+        nodeKey = n[0]; state = n[1]; g = n[2];
+        if (closed.has(nodeKey)) continue;
+      } else {
+        const n = heap.pop();
+        nodeKey = n[2]; state = n[3]; g = n[4];
+        if (closed.has(nodeKey)) continue;
+        const best = bestG.has(nodeKey) ? bestG.get(nodeKey) : Infinity;
+        if (g > best) continue;
+      }
+
+      closed.add(nodeKey);
+      res.expanded.push(nodeKey);
+      res.g.push(round3(g));
+      res.frontier.push(strategy === "bfs" ? (fifo.length - fifoHead) : heap.size);
+      if (res.frontier[res.frontier.length - 1] > res.maxFrontier) res.maxFrontier = res.frontier[res.frontier.length - 1];
+
+      if (problem.isGoal(state)) {
+        res.found = true;
+        const built = reconstruct(parent, nodeKey);
+        res.plan = built[0];
+        res.states = built[1];
+        res.cost = g;
+        break;
+      }
+
+      const succs = problem.successors(state);
+      for (let i = 0; i < succs.length; i++) {
+        const action = succs[i][0], succ = succs[i][1], stepCost = succs[i][2];
+        const succKey = problem.key(succ);
+        res.generated += 1;
+        const g2 = g + stepCost;
+
+        if (strategy === "bfs") {
+          if (parent.has(succKey)) continue;
+          parent.set(succKey, [nodeKey, action, succ]);
+          bestG.set(succKey, g2);
+          fifo.push([succKey, succ, g2]);
+        } else {
+          if (closed.has(succKey)) continue;
+          const known = bestG.has(succKey) ? bestG.get(succKey) : Infinity;
+          if (g2 >= known) continue;
+          parent.set(succKey, [nodeKey, action, succ]);
+          bestG.set(succKey, g2);
+          counter += 1;
+          const h = strategy === "dijkstra" ? 0 : problem.heuristic(succ);
+          heap.push([priority(strategy, g2, h), counter, succKey, succ, g2]);
+        }
+      }
+    }
+
+    res.ms = Math.round(((performance && performance.now ? performance.now() : Date.now()) - t0) * 100) / 100;
+    return res;
+  }
+
+  function reconstruct(parent, goalKey) {
+    const actions = [], states = [];
+    let key = goalKey;
+    while (key !== null && key !== undefined) {
+      const rec = parent.get(key);
+      states.push(rec[2]);
+      if (rec[1] !== null && rec[1] !== undefined) actions.push(rec[1]);
+      key = rec[0];
+    }
+    actions.reverse(); states.reverse();
+    return [actions, states];
+  }
+
+  const round3 = (x) => Math.round(x * 1000) / 1000;
+
+  // ------------------------------------------------------------- gridworld
+  const TERRAIN = { ".": 1, ",": 2, "~": 4, "=": 8 };
+  const WALL = "#";
+  const CHEAPEST = 1;
+  const SQRT2 = Math.SQRT2;
+  const STRAIGHT = [[-1, 0, "north"], [0, 1, "east"], [1, 0, "south"], [0, -1, "west"]];
+  const DIAGONAL = [[-1, 1, "north-east"], [1, 1, "south-east"], [1, -1, "south-west"], [-1, -1, "north-west"]];
+
+  function GridProblem(rows, start, goal, diagonal) {
+    const height = rows.length;
+    const width = height ? rows[0].length : 0;
+    for (const r of rows) if (r.length !== width) throw new Error("every row of the map must have the same width");
+
+    const inBounds = (r, c) => r >= 0 && r < height && c >= 0 && c < width;
+    const isWall = (r, c) => rows[r][c] === WALL;
+    const costOf = (r, c) => { const t = TERRAIN[rows[r][c]]; return t === undefined ? 1 : t; };
+
+    for (const [name, cell] of [["start", start], ["goal", goal]]) {
+      if (!inBounds(cell[0], cell[1])) throw new Error(name + " is outside the map");
+      if (isWall(cell[0], cell[1])) throw new Error(name + " sits inside a wall");
+    }
+
+    const moves = diagonal ? STRAIGHT.concat(DIAGONAL) : STRAIGHT;
+
+    return {
+      rows, start, goal, diagonal, height, width, inBounds, isWall, costOf,
+      initial: () => start,
+      isGoal: (s) => s[0] === goal[0] && s[1] === goal[1],
+      key: (s) => s[0] * width + s[1],          // a number: fast and unique
+      successors(s) {
+        const out = [];
+        const r = s[0], c = s[1];
+        for (let i = 0; i < moves.length; i++) {
+          const dr = moves[i][0], dc = moves[i][1], name = moves[i][2];
+          const nr = r + dr, nc = c + dc;
+          if (!inBounds(nr, nc) || isWall(nr, nc)) continue;
+          if (dr && dc) {
+            if (isWall(r + dr, c) || isWall(r, c + dc)) continue;
+            out.push([name, [nr, nc], costOf(nr, nc) * SQRT2]);
+          } else {
+            out.push([name, [nr, nc], costOf(nr, nc)]);
+          }
+        }
+        return out;
+      },
+      heuristic(s) {
+        const dr = Math.abs(s[0] - goal[0]);
+        const dc = Math.abs(s[1] - goal[1]);
+        if (diagonal) return CHEAPEST * (Math.abs(dr - dc) + SQRT2 * Math.min(dr, dc));
+        return CHEAPEST * (dr + dc);
+      },
+      pathCost(cells) {
+        let total = 0;
+        for (let i = 1; i < cells.length; i++) {
+          const dr = Math.abs(cells[i][0] - cells[i - 1][0]);
+          const dc = Math.abs(cells[i][1] - cells[i - 1][1]);
+          if (dr > 1 || dc > 1 || (dr === 0 && dc === 0)) throw new Error("not neighbours");
+          const step = costOf(cells[i][0], cells[i][1]);
+          total += (dr && dc) ? step * SQRT2 : step;
+        }
+        return total;
+      },
+      cellOf: (k) => [Math.floor(k / width), k % width],
+    };
+  }
+
+  // ------------------------------------------------------------ blocksworld
+  // Python compares tuples element-wise, and a prefix sorts first; replicate
+  // that exactly or the successor order (and thus the trace) drifts apart.
+  function cmpTuple(a, b) {
+    const n = Math.min(a.length, b.length);
+    for (let i = 0; i < n; i++) {
+      if (a[i] < b[i]) return -1;
+      if (a[i] > b[i]) return 1;
+    }
+    return a.length - b.length;
+  }
+
+  function stateOf(stacks, holding) {
+    const clean = stacks.filter((s) => s && s.length).map((s) => s.slice());
+    clean.sort(cmpTuple);
+    return { stacks: clean, holding: holding === undefined ? null : holding };
+  }
+
+  function stateKey(s) {
+    return s.stacks.map((st) => st.join("")).join("|") + "/" + (s.holding || "-");
+  }
+
+  function predicates(state) {
+    const facts = [];
+    for (const stack of state.stacks) {
+      facts.push(`ontable(${stack[0]})`);
+      for (let i = 1; i < stack.length; i++) facts.push(`on(${stack[i]}, ${stack[i - 1]})`);
+      facts.push(`clear(${stack[stack.length - 1]})`);
+    }
+    if (state.holding) facts.push(`holding(${state.holding})`);
+    else facts.push("handempty");
+    facts.sort();
+    return facts;
+  }
+
+  function describeAction(action, before) {
+    const facts = new Set(predicates(before));
+    const a = action.args;
+    let pre, add, del;
+    if (action.name === "pickup") {
+      pre = [`ontable(${a[0]})`, `clear(${a[0]})`, "handempty"];
+      add = [`holding(${a[0]})`]; del = [`ontable(${a[0]})`, `clear(${a[0]})`, "handempty"];
+    } else if (action.name === "putdown") {
+      pre = [`holding(${a[0]})`];
+      add = [`ontable(${a[0]})`, `clear(${a[0]})`, "handempty"]; del = [`holding(${a[0]})`];
+    } else if (action.name === "unstack") {
+      pre = [`on(${a[0]}, ${a[1]})`, `clear(${a[0]})`, "handempty"];
+      add = [`holding(${a[0]})`, `clear(${a[1]})`]; del = [`on(${a[0]}, ${a[1]})`, `clear(${a[0]})`, "handempty"];
+    } else if (action.name === "stack") {
+      pre = [`holding(${a[0]})`, `clear(${a[1]})`];
+      add = [`on(${a[0]}, ${a[1]})`, `clear(${a[0]})`, "handempty"]; del = [`holding(${a[0]})`, `clear(${a[1]})`];
+    } else throw new Error("unknown action " + action.name);
+    return {
+      action: { name: action.name, args: a.slice(), text: `${action.name}(${a.join(", ")})` },
+      pre: pre.map((f) => ({ fact: f, holds: facts.has(f) })),
+      add, del,
+    };
+  }
+
+  function BlocksProblem(start, goalFacts) {
+    const goalSet = new Set(goalFacts);
+    return {
+      start, goalFacts,
+      initial: () => start,
+      key: stateKey,
+      isGoal(s) {
+        const have = new Set(predicates(s));
+        for (const f of goalSet) if (!have.has(f)) return false;
+        return true;
+      },
+      successors(s) {
+        const out = [];
+        if (s.holding === null) {
+          for (const stack of s.stacks) {
+            const top = stack[stack.length - 1];
+            const rest = stack.slice(0, -1);
+            const others = s.stacks.filter((x) => x !== stack);
+            if (stack.length === 1) {
+              out.push([{ name: "pickup", args: [top] }, stateOf(others, top), 1]);
+            } else {
+              out.push([{ name: "unstack", args: [top, stack[stack.length - 2]] },
+                        stateOf(others.concat([rest]), top), 1]);
+            }
+          }
+        } else {
+          const x = s.holding;
+          out.push([{ name: "putdown", args: [x] }, stateOf(s.stacks.concat([[x]]), null), 1]);
+          for (const stack of s.stacks) {
+            const target = stack[stack.length - 1];
+            const others = s.stacks.filter((y) => y !== stack);
+            out.push([{ name: "stack", args: [x, target] },
+                      stateOf(others.concat([stack.concat([x])]), null), 1]);
+          }
+        }
+        return out;
+      },
+      heuristic(s) {
+        const have = new Set(predicates(s));
+        let n = 0;
+        for (const f of goalSet) if (!have.has(f)) n += 1;
+        return n;
+      },
+    };
+  }
+
+  return {
+    STRATEGIES, search, GridProblem, BlocksProblem,
+    stateOf, stateKey, predicates, describeAction, TERRAIN, WALL,
+  };
+})();
+
+/* ---- static/js/api_local.js ---- */
+/* The standalone build's stand-in for api.js.
+ *
+ * Same four calls, same shapes, same promises — but answered by
+ * static/js/planner/core.js in the page instead of by Flask.  Nothing else in
+ * the app is aware of which one it is talking to.
+ */
+window.API = (function () {
+  const P = window.Planner;
+
+  function gridProblem(payload) {
+    return P.GridProblem(payload.rows, payload.start, payload.goal, !!payload.diagonal);
+  }
+
+  function gridResult(problem, res) {
+    return {
+      strategy: res.strategy,
+      found: res.found,
+      expanded: res.expanded.map((k) => problem.cellOf(k)),
+      g: res.g,
+      path: res.states.map((s) => [s[0], s[1]]),
+      generated: res.generated,
+      maxFrontier: res.maxFrontier,
+      planLength: res.plan.length,
+      cost: Math.round(res.cost * 1000) / 1000,
+      ms: res.ms,
+    };
+  }
+
+  function stateJson(s) {
+    return { stacks: s.stacks.map((x) => x.slice()), holding: s.holding, predicates: P.predicates(s) };
+  }
+
+  return {
+    presets: async () => window.PP_PRESETS,
+
+    gridPlan: async (payload) => {
+      const problem = gridProblem(payload);
+      const wanted = payload.algorithms || [payload.algorithm || "astar"];
+      const bad = wanted.filter((a) => !P.STRATEGIES.includes(a));
+      if (bad.length) throw new Error("unknown algorithm(s): " + bad.join(", "));
+      return { results: wanted.map((a) => gridResult(problem, P.search(problem, a))) };
+    },
+
+    gridScore: async (payload) => {
+      const problem = gridProblem(payload);
+      const best = P.search(problem, "astar");
+      const optimal = Math.round((best.found ? best.cost : 0) * 1000) / 1000;
+      const cells = payload.path || [];
+      const same = (a, b) => a && b && a[0] === b[0] && a[1] === b[1];
+      if (!cells.length) return { valid: false, reason: "empty", optimal };
+      if (!same(cells[0], problem.start) || !same(cells[cells.length - 1], problem.goal)) {
+        return { valid: false, reason: "endpoints", optimal };
+      }
+      if (cells.some((c) => problem.isWall(c[0], c[1]))) return { valid: false, reason: "wall", optimal };
+      let cost;
+      try { cost = problem.pathCost(cells); } catch (e) { return { valid: false, reason: "jump", optimal }; }
+      return {
+        valid: true,
+        cost: Math.round(cost * 1000) / 1000,
+        optimal,
+        steps: cells.length - 1,
+        optimalSteps: Math.max(best.states.length - 1, 0),
+        ratio: optimal ? Math.round((cost / optimal) * 1000) / 1000 : null,
+      };
+    },
+
+    blocksPlan: async (payload) => {
+      const entry = (window.PP_PRESETS.blocks || []).find((b) => b.id === payload.preset);
+      if (!entry) throw new Error("unknown problem " + payload.preset);
+      const start = P.stateOf(entry.start.stacks, entry.start.holding);
+      const problem = P.BlocksProblem(start, entry.goal);
+      const strategy = payload.algorithm || "astar";
+      if (!P.STRATEGIES.includes(strategy)) throw new Error("unknown algorithm " + strategy);
+
+      const res = P.search(problem, strategy);
+      const steps = res.plan.map((action, i) => Object.assign(
+        P.describeAction(action, res.states[i]),
+        { before: stateJson(res.states[i]), after: stateJson(res.states[i + 1]) }
+      ));
+
+      const compare = {};
+      P.STRATEGIES.forEach((s) => {
+        const r = P.search(problem, s);
+        compare[s] = { strategy: s, found: r.found, expanded: r.expanded.length,
+                       generated: r.generated, maxFrontier: r.maxFrontier,
+                       planLength: r.plan.length, cost: r.cost, ms: r.ms };
+      });
+
+      return {
+        strategy, found: res.found, expanded: res.expanded.length,
+        generated: res.generated, maxFrontier: res.maxFrontier,
+        planLength: res.plan.length, cost: res.cost, ms: res.ms,
+        goal: entry.goal.slice(),
+        initial: stateJson(start),
+        steps, compare,
+      };
+    },
+  };
+})();
+
+/* ---- static/js/grid_view.js ---- */
+/* Drawing and painting the map.
+ *
+ * The view owns the DOM cells and nothing else: it knows how to render a map,
+ * how to overlay a search recording up to step k, and how to report painting
+ * gestures.  All decisions about *what* to show live in grid_controller.js.
+ */
+window.GridView = (function () {
+  const TERRAIN = { ".": 1, ",": 2, "~": 4, "=": 8 };
+
+  function create(rootEl, hooks) {
+    let rows = [];
+    let start = [0, 0];
+    let goal = [0, 0];
+    let cells = [];             // cells[r][c] -> HTMLElement
+    let painting = false;
+
+    // ------------------------------------------------------------- render
+    function setMap(nextRows, nextStart, nextGoal) {
+      rows = nextRows.slice();
+      start = nextStart.slice();
+      goal = nextGoal.slice();
+      build();
+    }
+
+    function build() {
+      const h = rows.length;
+      const w = rows[0].length;
+      rootEl.style.gridTemplateColumns = `repeat(${w}, 1fr)`;
+      rootEl.textContent = "";
+      cells = [];
+      const frag = document.createDocumentFragment();
+      for (let r = 0; r < h; r++) {
+        const rowCells = [];
+        for (let c = 0; c < w; c++) {
+          const el = document.createElement("div");
+          el.className = "cell";
+          el.dataset.t = rows[r][c];
+          el.dataset.r = r;
+          el.dataset.c = c;
+          rowCells.push(el);
+          frag.appendChild(el);
+        }
+        cells.push(rowCells);
+      }
+      rootEl.appendChild(frag);
+      markEndpoints();
+    }
+
+    function markEndpoints() {
+      cells.forEach((row) => row.forEach((el) => el.classList.remove("start", "goal")));
+      cells[start[0]][start[1]].classList.add("start");
+      cells[goal[0]][goal[1]].classList.add("goal");
+    }
+
+    /** Clear every search overlay but keep terrain, start and goal. */
+    function clearOverlay() {
+      cells.forEach((row) => row.forEach((el) => {
+        el.classList.remove("explored", "frontier", "path", "userpath", "blocked-now");
+        el.style.removeProperty("--depth");
+      }));
+    }
+
+    /**
+     * Show a recording up to `k` expansions.
+     * `result.g` shades the explored region by how expensive each cell was to
+     * reach, which is what makes Dijkstra's even ripple and greedy's narrow
+     * beam visible at a glance.
+     */
+    function showSearch(result, k, opts) {
+      const showPath = (opts && opts.showPath) !== false;
+      clearOverlay();
+      const n = Math.min(k, result.expanded.length);
+      const maxG = Math.max(1e-6, ...result.g.slice(0, Math.max(n, 1)));
+      for (let i = 0; i < n; i++) {
+        const [r, c] = result.expanded[i];
+        const el = cells[r][c];
+        el.classList.add("explored");
+        el.style.setProperty("--depth", (0.18 + 0.62 * (result.g[i] / maxG)).toFixed(3));
+      }
+      if (n > 0 && n < result.expanded.length) {
+        const [r, c] = result.expanded[n - 1];
+        cells[r][c].classList.add("frontier");
+      }
+      if (showPath && n >= result.expanded.length && result.found) {
+        result.path.forEach(([r, c]) => cells[r][c].classList.add("path"));
+      }
+      markEndpoints();
+    }
+
+    function showUserPath(pathCells) {
+      cells.forEach((row) => row.forEach((el) => el.classList.remove("userpath")));
+      pathCells.forEach(([r, c]) => cells[r][c].classList.add("userpath"));
+      markEndpoints();
+    }
+
+    function flash(cell) {
+      const el = cells[cell[0]][cell[1]];
+      el.classList.add("blocked-now");
+      setTimeout(() => el.classList.remove("blocked-now"), 1600);
+    }
+
+    // ------------------------------------------------------------ editing
+    function applyPaint(r, c, tool) {
+      if (tool === "start") {
+        if (rows[r][c] === "#") return false;
+        start = [r, c];
+      } else if (tool === "goal") {
+        if (rows[r][c] === "#") return false;
+        goal = [r, c];
+      } else {
+        // never paint a wall onto the robot or its goal
+        if (tool === "#" && ((r === start[0] && c === start[1]) || (r === goal[0] && c === goal[1]))) return false;
+        rows[r] = rows[r].slice(0, c) + tool + rows[r].slice(c + 1);
+        cells[r][c].dataset.t = tool;
+      }
+      markEndpoints();
+      return true;
+    }
+
+    function cellFromEvent(ev) {
+      const target = document.elementFromPoint(
+        ev.touches ? ev.touches[0].clientX : ev.clientX,
+        ev.touches ? ev.touches[0].clientY : ev.clientY
+      );
+      if (!target || !target.classList.contains("cell")) return null;
+      return [Number(target.dataset.r), Number(target.dataset.c)];
+    }
+
+    function onDown(ev) {
+      const cell = cellFromEvent(ev);
+      if (!cell) return;
+      ev.preventDefault();
+      painting = true;
+      hooks.onPaint(cell, true);
+    }
+    function onMove(ev) {
+      if (!painting) return;
+      const cell = cellFromEvent(ev);
+      if (cell) hooks.onPaint(cell, false);
+    }
+    function onUp() {
+      if (!painting) return;
+      painting = false;
+      hooks.onPaintEnd();
+    }
+
+    rootEl.addEventListener("mousedown", onDown);
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    rootEl.addEventListener("touchstart", onDown, { passive: false });
+    window.addEventListener("touchmove", onMove, { passive: false });
+    window.addEventListener("touchend", onUp);
+
+    return {
+      setMap, clearOverlay, showSearch, showUserPath, flash, applyPaint,
+      get rows() { return rows.slice(); },
+      get start() { return start.slice(); },
+      get goal() { return goal.slice(); },
+      terrainAt: (r, c) => TERRAIN[rows[r][c]] || 0,
+      isWall: (r, c) => rows[r][c] === "#",
+    };
+  }
+
+  return { create, TERRAIN };
+})();
+
+/* ---- static/js/grid_controller.js ---- */
+/* The navigation tab: wiring, playback and the stats table.
+ *
+ * One rule keeps this readable — the controller never computes a plan itself.
+ * It asks the planner (server or local), gets a recording back, and animates
+ * it.  Everything on screen is therefore something the planner actually did.
+ */
+window.GridController = (function () {
+  const ALGOS = ["bfs", "dijkstra", "greedy", "astar"];
+  const COLOR = { bfs: "#5a5a5a", dijkstra: "#004f7c", greedy: "#c87800", astar: "#009789" };
+  const TOOLS = [
+    { id: "start", label: "toolStart", swatch: "#004f7c" },
+    { id: "goal", label: "toolGoal", swatch: "#c82a2a" },
+    { id: "#", label: "toolWall", swatch: "#44505a" },
+    { id: ".", label: "toolFloor", swatch: "#f4f5f6" },
+    { id: ",", label: "toolGrass", swatch: "#d8e8c8" },
+    { id: "~", label: "toolMud", swatch: "#c9a87a" },
+    { id: "=", label: "toolWater", swatch: "#9dc6e0" },
+  ];
+
+  function init(presets, opts) {
+    opts = opts || {};
+    const el = {
+      grid: document.getElementById("grid"),
+      mapSelect: document.getElementById("mapSelect"),
+      algoBoxes: document.getElementById("algoBoxes"),
+      toolBoxes: document.getElementById("toolBoxes"),
+      diagonal: document.getElementById("diagonalToggle"),
+      speed: document.getElementById("speedRange"),
+      stats: document.querySelector("#gridStats tbody"),
+      lesson: document.getElementById("mapLesson"),
+      message: document.getElementById("gridMessage"),
+      progress: document.getElementById("gridProgress"),
+      plan: document.getElementById("btnPlan"),
+      race: document.getElementById("btnRace"),
+      play: document.getElementById("btnPlay"),
+      step: document.getElementById("btnStep"),
+      skip: document.getElementById("btnSkip"),
+      reset: document.getElementById("btnReset"),
+      draw: document.getElementById("btnDraw"),
+      obstacle: document.getElementById("btnObstacle"),
+    };
+
+    let maps = presets.grids;
+    let current = maps[0];
+    let selected = new Set(["astar"]);
+    let tool = "#";
+    let results = [];            // one recording per algorithm, in ALGOS order
+    let shown = null;            // which recording the map is animating
+    let frame = 0;
+    let timer = null;
+    let drawMode = false;
+    let userPath = [];
+
+    const view = window.GridView.create(el.grid, {
+      onPaint: (cell, isFirst) => handlePaint(cell, isFirst),
+      onPaintEnd: () => { if (drawMode) scoreUserPath(); },
+    });
+
+    // ------------------------------------------------------------ chrome
+    function buildChips() {
+      el.algoBoxes.textContent = "";
+      ALGOS.forEach((a) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "chip" + (selected.has(a) ? " is-on" : "");
+        b.innerHTML = `<i class="dot" style="background:${COLOR[a]}"></i><span>${window.I18N.t(a)}</span>`;
+        b.onclick = () => {
+          if (selected.has(a)) { if (selected.size > 1) selected.delete(a); }
+          else selected.add(a);
+          buildChips();
+        };
+        el.algoBoxes.appendChild(b);
+      });
+
+      el.toolBoxes.textContent = "";
+      TOOLS.forEach((tdef) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "chip tool-chip" + (tool === tdef.id ? " is-on" : "");
+        b.innerHTML = `<i class="dot" style="background:${tdef.swatch};border:1px solid #bbb"></i><span>${window.I18N.t(tdef.label)}</span>`;
+        b.onclick = () => { tool = tdef.id; buildChips(); };
+        el.toolBoxes.appendChild(b);
+      });
+    }
+
+    function buildMapSelect() {
+      el.mapSelect.textContent = "";
+      maps.forEach((m) => {
+        const o = document.createElement("option");
+        o.value = m.id;
+        o.textContent = window.I18N.pick(m.name);
+        el.mapSelect.appendChild(o);
+      });
+      el.mapSelect.value = current.id;
+    }
+
+    function loadMap(id) {
+      current = maps.find((m) => m.id === id) || maps[0];
+      el.mapSelect.value = current.id;          // keep the dropdown in step with deep links
+      el.diagonal.checked = !!current.diagonal;
+      view.setMap(current.rows, current.start, current.goal);
+      el.lesson.textContent = window.I18N.pick(current.lesson);
+      resetSearch();
+    }
+
+    // ------------------------------------------------------------ editing
+    function handlePaint(cell, isFirst) {
+      if (drawMode) {
+        extendUserPath(cell, isFirst);
+        return;
+      }
+      const [r, c] = cell;
+      if ((tool === "start" || tool === "goal") && !isFirst) return;
+      if (view.applyPaint(r, c, tool)) resetSearch();
+    }
+
+    function extendUserPath(cell, isFirst) {
+      const [r, c] = cell;
+      if (view.isWall(r, c)) return;
+      if (isFirst) userPath = [];
+      const last = userPath[userPath.length - 1];
+      if (last && last[0] === r && last[1] === c) return;
+      if (!last && !(r === view.start[0] && c === view.start[1])) return;   // must begin at the robot
+      if (last) {
+        const dr = Math.abs(r - last[0]);
+        const dc = Math.abs(c - last[1]);
+        const ok = el.diagonal.checked ? (dr <= 1 && dc <= 1) : (dr + dc === 1);
+        if (!ok) return;
+      }
+      userPath.push([r, c]);
+      view.showUserPath(userPath);
+    }
+
+    // ----------------------------------------------------------- planning
+    function payload(extra) {
+      return Object.assign({
+        rows: view.rows,
+        start: view.start,
+        goal: view.goal,
+        diagonal: el.diagonal.checked,
+      }, extra || {});
+    }
+
+    async function runPlan(algorithms) {
+      stopTimer();
+      setBusy(true);
+      try {
+        const data = await window.API.gridPlan(payload({ algorithms }));
+        results = data.results;
+        shown = results[results.length - 1];
+        frame = 0;
+        renderStats();
+        if (!shown.found) {
+          say(window.I18N.t("noPath"), true);
+          view.clearOverlay();
+          setControls();
+          return;
+        }
+        say("");
+        play();
+      } catch (err) {
+        say(err.message, true);
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function scoreUserPath() {
+      try {
+        const data = await window.API.gridScore(payload({ path: userPath }));
+        if (!data.valid) {
+          const key = {
+            endpoints: "scoreInvalidEndpoints", wall: "scoreInvalidWall",
+            jump: "scoreInvalidJump", empty: "scoreInvalidEmpty",
+          }[data.reason] || "scoreInvalidEmpty";
+          say(window.I18N.t(key), true);
+          return;
+        }
+        const perfect = Math.abs(data.cost - data.optimal) < 1e-6;
+        say(window.I18N.t(perfect ? "scorePerfect" : "scoreValid", {
+          cost: fmt(data.cost), optimal: fmt(data.optimal),
+        }), false);
+      } catch (err) {
+        say(err.message, true);
+      }
+    }
+
+    /** Drop a wall onto the middle of the plan and immediately replan. */
+    async function dropObstacle() {
+      if (!shown || !shown.found || shown.path.length < 3) return;
+      const mid = shown.path[Math.floor(shown.path.length / 2)];
+      if (!view.applyPaint(mid[0], mid[1], "#")) return;
+      view.flash(mid);
+      say(window.I18N.t("pathBlocked"));
+      await runPlan([...selected]);
+    }
+
+    // ---------------------------------------------------------- animation
+    function play() {
+      stopTimer();
+      if (!shown) return;
+      if (frame >= shown.expanded.length) frame = 0;
+      const delay = frameDelay();
+      timer = setInterval(() => {
+        const stride = strideFor();
+        frame = Math.min(frame + stride, shown.expanded.length);
+        view.showSearch(shown, frame);
+        updateProgress();
+        if (frame >= shown.expanded.length) { stopTimer(); setControls(); }
+      }, delay);
+      setControls();
+    }
+
+    function stopTimer() { if (timer) { clearInterval(timer); timer = null; } setControls(); }
+
+    // A slow map and a 3000-cell map should both finish in a sane time, so the
+    // slider controls cells-per-second rather than frames-per-second.
+    function strideFor() {
+      const v = Number(el.speed.value);
+      return Math.max(1, Math.round((v / 100) ** 2 * 40));
+    }
+    function frameDelay() { return 16; }
+
+    function stepOnce() {
+      stopTimer();
+      if (!shown) return;
+      frame = Math.min(frame + 1, shown.expanded.length);
+      view.showSearch(shown, frame);
+      updateProgress();
+    }
+
+    function skip() {
+      stopTimer();
+      if (!shown) return;
+      frame = shown.expanded.length;
+      view.showSearch(shown, frame);
+      updateProgress();
+    }
+
+    function resetSearch() {
+      stopTimer();
+      results = [];
+      shown = null;
+      frame = 0;
+      userPath = [];
+      view.clearOverlay();
+      renderStats();
+      updateProgress();
+      say("");
+    }
+
+    function updateProgress() {
+      if (!shown) { el.progress.textContent = ""; return; }
+      el.progress.textContent =
+        `${frame} / ${shown.expanded.length} ${window.I18N.t("expandedSoFar")}`;
+    }
+
+    // -------------------------------------------------------------- stats
+    function renderStats() {
+      el.stats.textContent = "";
+      if (!results.length) return;
+      const costs = results.filter((r) => r.found).map((r) => r.cost);
+      const best = Math.min(...costs, Infinity);
+      const fewest = Math.min(...results.map((r) => r.expanded.length));
+
+      results.forEach((r) => {
+        const tr = document.createElement("tr");
+        if (shown === r) tr.className = "is-shown";
+        const worse = r.found && r.cost > best + 1e-9;
+        tr.innerHTML = `
+          <td><span class="algo-name"><i class="dot" style="background:${COLOR[r.strategy]}"></i>${window.I18N.t(r.strategy)}</span>
+              <span class="hint">${window.I18N.t(r.strategy + "Hint")}</span></td>
+          <td class="num ${r.expanded.length === fewest ? "best" : ""}">${r.expanded.length}</td>
+          <td class="num ${worse ? "worst" : (r.found && r.cost === best ? "best" : "")}">${r.found ? fmt(r.cost) : "—"}</td>
+          <td class="num">${r.found ? r.planLength : "—"}</td>
+          <td class="num">${r.ms} ms</td>`;
+        tr.onclick = () => { shown = r; frame = r.expanded.length; view.showSearch(r, frame); updateProgress(); renderStats(); };
+        el.stats.appendChild(tr);
+      });
+    }
+
+    // ------------------------------------------------------------ helpers
+    function fmt(x) {
+      const s = window.I18N.lang === "de" ? "," : ".";
+      return (Math.round(x * 100) / 100).toFixed(2).replace(".", s);
+    }
+    function say(msg, warn) {
+      el.message.textContent = msg || "";
+      el.message.classList.toggle("warn", !!warn);
+    }
+    function setBusy(b) { el.plan.disabled = b; el.race.disabled = b; }
+    function setControls() {
+      const has = !!shown;
+      el.play.disabled = !has;
+      el.step.disabled = !has;
+      el.skip.disabled = !has;
+      el.play.textContent = window.I18N.t(timer ? "btnPause" : "btnPlay");
+    }
+
+    // -------------------------------------------------------------- wiring
+    el.mapSelect.onchange = () => loadMap(el.mapSelect.value);
+    el.diagonal.onchange = () => resetSearch();
+    el.plan.onclick = () => runPlan([...selected]);
+    el.race.onclick = () => { selected = new Set(ALGOS); buildChips(); runPlan(ALGOS); };
+    el.play.onclick = () => (timer ? stopTimer() : play());
+    el.step.onclick = stepOnce;
+    el.skip.onclick = skip;
+    el.reset.onclick = resetSearch;
+    el.obstacle.onclick = dropObstacle;
+    el.draw.onclick = () => {
+      drawMode = !drawMode;
+      userPath = [];
+      el.draw.classList.toggle("is-on", drawMode);
+      el.draw.textContent = window.I18N.t(drawMode ? "btnDrawPathDone" : "btnDrawPath");
+      say(drawMode ? window.I18N.t("drawHint") : "");
+      if (!drawMode) view.showUserPath([]);
+    };
+
+    window.addEventListener("pp:lang", () => {
+      buildChips();
+      buildMapSelect();
+      el.lesson.textContent = window.I18N.pick(current.lesson);
+      el.draw.textContent = window.I18N.t(drawMode ? "btnDrawPathDone" : "btnDrawPath");
+      renderStats();
+      updateProgress();
+      setControls();
+    });
+
+    buildChips();
+    buildMapSelect();
+    if (opts.algos && opts.algos.length) { selected = new Set(opts.algos.filter((a) => ALGOS.includes(a))); buildChips(); }
+    loadMap(opts.map && maps.some((m) => m.id === opts.map) ? opts.map : maps[0].id);
+    setControls();
+
+    // Deep links: ?map=mud&algos=bfs,astar&run=skip lets the presenter jump
+    // straight to a scenario (and lets the tests drive the UI headlessly).
+    if (opts.run) {
+      const done = () => { if (opts.run === "skip") skip(); };
+      runPlan([...selected]).then(() => setTimeout(done, 0));
+    }
+  }
+
+  return { init };
+})();
+
+/* ---- static/js/blocks_view.js ---- */
+/* Drawing the blocks world: stacks on a table, plus the goal as a fact list.
+ *
+ * Blocks keep a stable colour across every state so the eye can follow one
+ * block through the plan; that is the whole trick that makes the animation
+ * readable.
+ */
+window.BlocksView = (function () {
+  const PALETTE = ["#004f7c", "#009789", "#c87800", "#c82a2a", "#6b4fa0", "#3f7d20", "#a0522d", "#2f6f8f"];
+
+  function colorFor(name) {
+    let h = 0;
+    for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+    return PALETTE[h % PALETTE.length];
+  }
+
+  function create(tableEl, gripperEl, goalEl) {
+    /** Draw one state; `moved` highlights the block the last action touched. */
+    function showState(state, moved) {
+      tableEl.textContent = "";
+      const stacks = state.stacks.slice().sort((a, b) => (a[0] || "").localeCompare(b[0] || ""));
+      stacks.forEach((stack) => {
+        const col = document.createElement("div");
+        col.className = "stack";
+        stack.forEach((name) => col.appendChild(blockEl(name, name === moved, false)));
+        tableEl.appendChild(col);
+      });
+      if (state.holding) {
+        const col = document.createElement("div");
+        col.className = "stack";
+        col.appendChild(blockEl(state.holding, state.holding === moved, true));
+        tableEl.appendChild(col);
+      }
+      gripperEl.textContent = state.holding
+        ? window.I18N.t("gripperHolding", { block: state.holding })
+        : window.I18N.t("gripperEmpty");
+    }
+
+    function blockEl(name, isMoved, isHeld) {
+      const b = document.createElement("div");
+      b.className = "block" + (isHeld ? " held" : "") + (isMoved ? " moved" : "");
+      b.style.background = colorFor(name);
+      b.textContent = name;
+      return b;
+    }
+
+    /** The goal, with each fact marked satisfied or not in the current state. */
+    function showGoal(goalFacts, currentPredicates) {
+      const have = new Set(currentPredicates || []);
+      goalEl.textContent = "";
+      goalFacts.forEach((f) => {
+        const d = document.createElement("div");
+        d.className = "fact " + (have.has(f) ? "sat" : "unsat");
+        d.textContent = (have.has(f) ? "✓ " : "· ") + f;
+        goalEl.appendChild(d);
+      });
+    }
+
+    return { showState, showGoal, colorFor };
+  }
+
+  return { create, colorFor };
+})();
+
+/* ---- static/js/blocks_controller.js ---- */
+/* The blocks tab: play a plan one action at a time and show, for each action,
+ * the preconditions it relied on and the facts it added and deleted.
+ *
+ * That triple -- name, preconditions, effects -- is literally what a PDDL
+ * action is, so this tab is the answer to "what does a planner actually read?".
+ */
+window.BlocksController = (function () {
+  const ALGOS = ["bfs", "dijkstra", "greedy", "astar"];
+
+  function init(presets, opts) {
+    opts = opts || {};
+    const el = {
+      select: document.getElementById("blockSelect"),
+      algoBoxes: document.getElementById("blockAlgoBoxes"),
+      speed: document.getElementById("blockSpeed"),
+      now: document.getElementById("blocksNow"),
+      gripper: document.getElementById("gripper"),
+      goal: document.getElementById("blocksGoal"),
+      planList: document.getElementById("planList"),
+      detail: document.getElementById("actionDetail"),
+      predicates: document.getElementById("predicateList"),
+      lesson: document.getElementById("blockLesson"),
+      compare: document.getElementById("blocksCompare"),
+      message: document.getElementById("blocksMessage"),
+      plan: document.getElementById("btnBlockPlan"),
+      play: document.getElementById("btnBlockPlay"),
+      step: document.getElementById("btnBlockStep"),
+      skip: document.getElementById("btnBlockSkip"),
+      reset: document.getElementById("btnBlockReset"),
+    };
+
+    const problems = presets.blocks;
+    let current = problems[0];
+    let algo = "astar";
+    let plan = null;        // the server's answer
+    let index = -1;         // -1 = initial state, k = after action k
+    let timer = null;
+
+    const view = window.BlocksView.create(el.now, el.gripper, el.goal);
+
+    // ------------------------------------------------------------- chrome
+    function buildChips() {
+      el.algoBoxes.textContent = "";
+      ALGOS.forEach((a) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "chip" + (algo === a ? " is-on" : "");
+        b.textContent = window.I18N.t(a);
+        b.onclick = () => { algo = a; buildChips(); if (plan) runPlan(); };
+        el.algoBoxes.appendChild(b);
+      });
+    }
+
+    function buildSelect() {
+      el.select.textContent = "";
+      problems.forEach((p) => {
+        const o = document.createElement("option");
+        o.value = p.id;
+        o.textContent = window.I18N.pick(p.name);
+        el.select.appendChild(o);
+      });
+      el.select.value = current.id;
+    }
+
+    function loadProblem(id) {
+      current = problems.find((p) => p.id === id) || problems[0];
+      el.select.value = current.id;             // keep the dropdown in step with deep links
+      plan = null;
+      index = -1;
+      stopTimer();
+      el.lesson.textContent = window.I18N.pick(current.lesson);
+      const initial = { stacks: current.start.stacks, holding: current.start.holding, predicates: [] };
+      view.showState(initial, null);
+      view.showGoal(current.goal, []);
+      el.planList.textContent = "";
+      el.detail.textContent = "";
+      el.predicates.textContent = "";
+      el.compare.textContent = "";
+      say(window.I18N.t("beforePlan"));
+      setControls();
+    }
+
+    // ----------------------------------------------------------- planning
+    async function runPlan() {
+      stopTimer();
+      el.plan.disabled = true;
+      try {
+        const data = await window.API.blocksPlan({ preset: current.id, algorithm: algo });
+        plan = data;
+        index = -1;
+        renderPlanList();
+        renderCompare();
+        showAt(-1);
+        say(window.I18N.t("planFound", { n: data.steps.length, expanded: data.expanded }));
+        setControls();
+      } catch (err) {
+        say(err.message, true);
+      } finally {
+        el.plan.disabled = false;
+      }
+    }
+
+    // ---------------------------------------------------------- rendering
+    function stateAt(k) {
+      if (!plan) return null;
+      return k < 0 ? plan.initial : plan.steps[k].after;
+    }
+
+    function showAt(k) {
+      if (!plan) return;
+      index = Math.max(-1, Math.min(k, plan.steps.length - 1));
+      const state = stateAt(index);
+      const moved = index >= 0 ? plan.steps[index].action.args[0] : null;
+      view.showState(state, moved);
+      view.showGoal(plan.goal, state.predicates);
+      renderPredicates(state.predicates);
+      renderDetail(index);
+      markPlanList();
+    }
+
+    function renderPlanList() {
+      el.planList.textContent = "";
+      plan.steps.forEach((s, i) => {
+        const li = document.createElement("li");
+        li.textContent = s.action.text;
+        li.onclick = () => { stopTimer(); showAt(i); };
+        el.planList.appendChild(li);
+      });
+    }
+
+    function markPlanList() {
+      [...el.planList.children].forEach((li, i) => {
+        li.classList.toggle("is-current", i === index);
+        li.classList.toggle("is-done", i < index);
+      });
+    }
+
+    function renderDetail(k) {
+      el.detail.textContent = "";
+      if (k < 0) return;
+      const s = plan.steps[k];
+      const frag = document.createDocumentFragment();
+
+      const name = document.createElement("div");
+      name.className = "act-name";
+      name.textContent = `${k + 1}. ${s.action.text}`;
+      frag.appendChild(name);
+
+      frag.appendChild(group(window.I18N.t("preLabel"),
+        s.pre.map((p) => ({ text: (p.holds ? "✓ " : "✗ ") + p.fact, cls: p.holds ? "sat" : "unsat" }))));
+      frag.appendChild(group(window.I18N.t("addLabel"),
+        s.add.map((f) => ({ text: "+ " + f, cls: "add" }))));
+      frag.appendChild(group(window.I18N.t("delLabel"),
+        s["del"].map((f) => ({ text: "− " + f, cls: "del" }))));
+
+      el.detail.appendChild(frag);
+    }
+
+    function group(label, items) {
+      const box = document.createElement("div");
+      const lab = document.createElement("div");
+      lab.className = "grp-label";
+      lab.textContent = label;
+      box.appendChild(lab);
+      const facts = document.createElement("div");
+      facts.className = "facts";
+      items.forEach((it) => {
+        const d = document.createElement("div");
+        d.className = "fact " + it.cls;
+        d.textContent = it.text;
+        facts.appendChild(d);
+      });
+      box.appendChild(facts);
+      return box;
+    }
+
+    function renderPredicates(list) {
+      el.predicates.textContent = "";
+      (list || []).forEach((f) => {
+        const d = document.createElement("div");
+        d.className = "fact";
+        d.textContent = f;
+        el.predicates.appendChild(d);
+      });
+    }
+
+    function renderCompare() {
+      el.compare.textContent = "";
+      const entries = ALGOS.map((a) => [a, plan.compare[a]]).filter(([, v]) => v);
+      const max = Math.max(...entries.map(([, v]) => v.expanded), 1);
+      entries.forEach(([a, v]) => {
+        const row = document.createElement("div");
+        row.className = "row";
+        row.innerHTML = `<span>${window.I18N.t(a)}</span>
+          <span class="bar" style="width:${Math.max(2, (v.expanded / max) * 100)}%;background:${a === algo ? "#009789" : "#004f7c"}"></span>
+          <span class="n">${v.expanded}</span>`;
+        el.compare.appendChild(row);
+      });
+    }
+
+    // ---------------------------------------------------------- animation
+    function play() {
+      stopTimer();
+      if (!plan) return;
+      if (index >= plan.steps.length - 1) index = -1;
+      const delay = 1400 - Number(el.speed.value) * 12;
+      timer = setInterval(() => {
+        if (index >= plan.steps.length - 1) { stopTimer(); return; }
+        showAt(index + 1);
+      }, Math.max(140, delay));
+      setControls();
+    }
+
+    function stopTimer() { if (timer) { clearInterval(timer); timer = null; } setControls(); }
+
+    // ------------------------------------------------------------ helpers
+    function say(msg, warn) {
+      el.message.textContent = msg || "";
+      el.message.classList.toggle("warn", !!warn);
+    }
+    function setControls() {
+      const has = !!plan;
+      el.play.disabled = !has;
+      el.step.disabled = !has;
+      el.skip.disabled = !has;
+      el.play.textContent = window.I18N.t(timer ? "btnPause" : "btnPlay");
+    }
+
+    // ------------------------------------------------------------- wiring
+    el.select.onchange = () => loadProblem(el.select.value);
+    el.plan.onclick = runPlan;
+    el.play.onclick = () => (timer ? stopTimer() : play());
+    el.step.onclick = () => { stopTimer(); showAt(index + 1); };
+    el.skip.onclick = () => { stopTimer(); showAt(plan ? plan.steps.length - 1 : -1); };
+    el.reset.onclick = () => { stopTimer(); showAt(-1); };
+
+    window.addEventListener("pp:lang", () => {
+      buildChips();
+      buildSelect();
+      el.lesson.textContent = window.I18N.pick(current.lesson);
+      if (plan) { renderCompare(); showAt(index); }
+      else { say(window.I18N.t("beforePlan")); loadProblem(current.id); }
+      setControls();
+    });
+
+    buildChips();
+    buildSelect();
+    loadProblem(opts.problem && problems.some((p) => p.id === opts.problem) ? opts.problem : problems[0].id);
+    if (opts.run) runPlan().then(() => { if (opts.run === "skip") showAt(plan ? plan.steps.length - 1 : -1); });
+  }
+
+  return { init };
+})();
+
+/* ---- static/js/main.js ---- */
+/* Boot order matters here, so it is spelled out rather than implied:
+ * translations, then presets, then the two controllers, then the chrome, and
+ * only once everything is listening do we honour the query string. */
+(async function () {
+  await window.I18N.load();
+  window.I18N.apply();
+
+  let presets;
+  try {
+    presets = await window.API.presets();
+  } catch (err) {
+    document.body.insertAdjacentHTML("afterbegin",
+      `<p style="color:#c82a2a;padding:12px">Could not reach the planner: ${err.message}</p>`);
+    return;
+  }
+
+  // ------------------------------------------------------------ chrome
+  function selectTab(which) {
+    document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("is-active", t.dataset.tab === which));
+    document.getElementById("tab-grid").classList.toggle("is-hidden", which !== "grid");
+    document.getElementById("tab-blocks").classList.toggle("is-hidden", which !== "blocks");
+  }
+  document.querySelectorAll(".tab").forEach((tab) => {
+    tab.onclick = () => selectTab(tab.dataset.tab);
+  });
+
+  function selectLang(code) {
+    document.querySelectorAll(".lang").forEach((b) => b.classList.toggle("is-active", b.dataset.lang === code));
+    window.I18N.set(code);
+  }
+  document.querySelectorAll(".lang").forEach((btn) => {
+    btn.onclick = () => selectLang(btn.dataset.lang);
+  });
+
+  // --------------------------------------------------------- deep links
+  // ?map=mud&algos=bfs,astar&run=skip&tab=grid&lang=de
+  // Handy for the presenter (one link per scenario) and for the tests.
+  const q = new URLSearchParams(location.search);
+
+  if (q.get("lang") === "de") selectLang("de");
+
+  window.GridController.init(presets, {
+    map: q.get("map"),
+    algos: (q.get("algos") || "").split(",").filter(Boolean),
+    run: q.get("tab") === "blocks" ? null : q.get("run"),
+  });
+  window.BlocksController.init(presets, {
+    problem: q.get("problem"),
+    run: q.get("tab") === "blocks" ? q.get("run") : null,
+  });
+
+  selectTab(q.get("tab") === "blocks" ? "blocks" : "grid");
+})();
+
+</script>
+</body>
+</html>

@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Planning Playground</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+</head>
+<body>
+<div class="wrap">
+
+  <header class="app-head">
+    <div>
+      <h1 data-i18n="appTitle">AI Planning Playground</h1>
+      <p class="sub" data-i18n="appSubtitle"></p>
+    </div>
+    <div class="head-right">
+      <nav class="tabs" role="tablist">
+        <button class="tab is-active" data-tab="grid" role="tab" data-i18n="tabGrid"></button>
+        <button class="tab" data-tab="blocks" role="tab" data-i18n="tabBlocks"></button>
+      </nav>
+      <div class="langs">
+        <button class="lang is-active" data-lang="en">EN</button>
+        <button class="lang" data-lang="de">DE</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ============================ NAVIGATION ============================ -->
+  <section class="panel" id="tab-grid">
+
+    <div class="toolbar">
+      <label class="field">
+        <span data-i18n="mapLabel"></span>
+        <select id="mapSelect"></select>
+      </label>
+
+      <fieldset class="field algos">
+        <legend data-i18n="algorithmsLabel"></legend>
+        <div id="algoBoxes" class="chips"></div>
+      </fieldset>
+
+      <fieldset class="field tools">
+        <legend data-i18n="toolsLabel"></legend>
+        <div id="toolBoxes" class="chips"></div>
+      </fieldset>
+
+      <label class="field check">
+        <input type="checkbox" id="diagonalToggle">
+        <span data-i18n="diagonalLabel"></span>
+      </label>
+
+      <label class="field">
+        <span data-i18n="speedLabel"></span>
+        <input type="range" id="speedRange" min="1" max="100" value="55">
+      </label>
+    </div>
+
+    <div class="stage">
+      <div class="board-col">
+        <div id="grid" class="grid" role="img" aria-label="planning map"></div>
+        <div class="playbar">
+          <button id="btnPlan" class="primary" data-i18n="btnPlan"></button>
+          <button id="btnRace" data-i18n="btnRace"></button>
+          <span class="spacer"></span>
+          <button id="btnPlay" data-i18n="btnPlay"></button>
+          <button id="btnStep" data-i18n="btnStep"></button>
+          <button id="btnSkip" data-i18n="btnSkip"></button>
+          <button id="btnReset" data-i18n="btnReset"></button>
+        </div>
+        <div class="playbar">
+          <button id="btnDraw" data-i18n="btnDrawPath"></button>
+          <button id="btnObstacle" data-i18n="btnObstacle"></button>
+          <span class="spacer"></span>
+          <span id="gridProgress" class="progress"></span>
+        </div>
+        <p id="gridMessage" class="message" role="status"></p>
+      </div>
+
+      <aside class="side">
+        <h2 data-i18n="statsTitle"></h2>
+        <table class="stats" id="gridStats">
+          <thead><tr>
+            <th data-i18n="colAlgorithm"></th>
+            <th class="num" data-i18n="colExpanded"></th>
+            <th class="num" data-i18n="colCost"></th>
+            <th class="num" data-i18n="colSteps"></th>
+            <th class="num" data-i18n="colTime"></th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+
+        <h2 data-i18n="lessonTitle"></h2>
+        <p id="mapLesson" class="lesson"></p>
+
+        <h2 data-i18n="legendTitle"></h2>
+        <ul class="legend">
+          <li><i class="sw sw-explored"></i><span data-i18n="legendExplored"></span></li>
+          <li><i class="sw sw-frontier"></i><span data-i18n="legendFrontier"></span></li>
+          <li><i class="sw sw-path"></i><span data-i18n="legendPath"></span></li>
+          <li><i class="sw sw-user"></i><span data-i18n="legendYourPath"></span></li>
+        </ul>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ============================== BLOCKS ============================== -->
+  <section class="panel is-hidden" id="tab-blocks">
+
+    <div class="toolbar">
+      <label class="field">
+        <span data-i18n="problemLabel"></span>
+        <select id="blockSelect"></select>
+      </label>
+      <fieldset class="field algos">
+        <legend data-i18n="algorithmsLabel"></legend>
+        <div id="blockAlgoBoxes" class="chips"></div>
+      </fieldset>
+      <label class="field">
+        <span data-i18n="speedLabel"></span>
+        <input type="range" id="blockSpeed" min="1" max="100" value="45">
+      </label>
+    </div>
+
+    <div class="stage">
+      <div class="board-col">
+        <div class="blocks-scenes">
+          <div class="scene">
+            <h3 data-i18n="stateNow"></h3>
+            <div id="blocksNow" class="table-top"></div>
+            <p id="gripper" class="gripper"></p>
+          </div>
+          <div class="scene goal-scene">
+            <h3 data-i18n="stateGoal"></h3>
+            <div id="blocksGoal" class="goal-facts"></div>
+          </div>
+        </div>
+
+        <div class="playbar">
+          <button id="btnBlockPlan" class="primary" data-i18n="btnPlan"></button>
+          <span class="spacer"></span>
+          <button id="btnBlockPlay" data-i18n="btnPlay"></button>
+          <button id="btnBlockStep" data-i18n="btnStep"></button>
+          <button id="btnBlockSkip" data-i18n="btnSkip"></button>
+          <button id="btnBlockReset" data-i18n="btnReset"></button>
+        </div>
+        <p id="blocksMessage" class="message" role="status"></p>
+      </div>
+
+      <aside class="side">
+        <h2 data-i18n="planLabel"></h2>
+        <ol id="planList" class="plan"></ol>
+
+        <h2 data-i18n="actionLabel"></h2>
+        <div id="actionDetail" class="action-detail"></div>
+
+        <h2 data-i18n="predicatesLabel"></h2>
+        <div id="predicateList" class="predicates"></div>
+
+        <h2 data-i18n="lessonTitle"></h2>
+        <p id="blockLesson" class="lesson"></p>
+
+        <h2 data-i18n="blocksCompare"></h2>
+        <div id="blocksCompare" class="compare"></div>
+      </aside>
+    </div>
+  </section>
+
+  <footer class="app-foot"><span data-i18n="footerNote"></span></footer>
+</div>
+
+<script>window.PP_MODE = "server";</script>
+<script src="{{ url_for('static', filename='js/i18n.js') }}"></script>
+<script src="{{ url_for('static', filename='js/api.js') }}"></script>
+<script src="{{ url_for('static', filename='js/grid_view.js') }}"></script>
+<script src="{{ url_for('static', filename='js/grid_controller.js') }}"></script>
+<script src="{{ url_for('static', filename='js/blocks_view.js') }}"></script>
+<script src="{{ url_for('static', filename='js/blocks_controller.js') }}"></script>
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>

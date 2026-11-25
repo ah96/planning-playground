@@ -1,0 +1,6 @@
+# Bytecode caches, written by Python on every import.
+__pycache__/
+*.pyc
+
+# The cache of pytest, written by every test run.
+.pytest_cache/
